@@ -65,8 +65,8 @@ namespace satdump
                         }
                     }
 
-                    // if (rot_current_req_pos.el < 0)
-                    //     rot_current_req_pos.el = 0;
+                    if (rot_current_req_pos.el < 0)
+                        rot_current_req_pos.el = 0;
 
                     if (rot_current_reqlast_pos.az != rot_current_req_pos.az || rot_current_reqlast_pos.el != rot_current_req_pos.el)
                         if (rotator_handler->set_pos(rot_current_req_pos.az, rot_current_req_pos.el) != rotator::ROT_ERROR_OK)
