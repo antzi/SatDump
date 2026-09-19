@@ -152,6 +152,15 @@ namespace noaa_metop
             // calib_out["lua"] = loadFileToString(resources::getResourcePath("calibration/MHS.lua"));
             calib_out["calibrator"] = "noaa_mhs";
 
+            if (line < 3 || calib_lines.size() < static_cast<size_t>(line))
+            {
+                logger->warn(
+                    "Not enough MHS calibration data: line=%d, calib_lines=%zu. Skipping calibration.",
+                    line,
+                    calib_lines.size());
+                return;
+            }
+
             uint8_t PIE = satdump::most_common(PIE_buff.begin(), PIE_buff.end(), 0);
             PIE_buff.clear();
 
