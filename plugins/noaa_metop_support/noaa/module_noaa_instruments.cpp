@@ -374,12 +374,19 @@ namespace noaa
                     nlohmann::json calib_coefs = loadJsonFile(resources::getResourcePath("calibration/MHS.json"));
                     if (calib_coefs.contains(sat_name))
                     {
-                        mhs_reader.calibrate(calib_coefs[sat_name]);
-                        mhs_products.set_calibration("noaa_mhs", mhs_reader.calib_out);
-                        for (int i = 0; i < 5; i++)
+                        if (mhs_reader.line >= 3)
                         {
-                            mhs_products.set_channel_unit(i, CALIBRATION_ID_EMISSIVE_RADIANCE);
-                            mhs_products.set_channel_wavenumber(i, calib_coefs[sat_name]["wavenumber"][i]);
+                            mhs_reader.calibrate(calib_coefs[sat_name]);
+                            mhs_products.set_calibration("noaa_mhs", mhs_reader.calib_out);
+                            for (int i = 0; i < 5; i++)
+                            {
+                                mhs_products.set_channel_unit(i, CALIBRATION_ID_EMISSIVE_RADIANCE);
+                                mhs_products.set_channel_wavenumber(i, calib_coefs[sat_name]["wavenumber"][i]);
+                            }
+                        }
+                        else
+                        {
+                            logger->warn("Not enough MHS lines for calibration, skipping MHS processing");
                         }
                     }
                     else
