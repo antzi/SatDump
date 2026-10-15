@@ -162,9 +162,6 @@ namespace satdump
                 {
                     ImGui::BeginChild("##trackingbarschedule", ImVec2(0, 0), false, ImGuiWindowFlags_NoResize);
                     auto_scheduler.renderAutotrackConfig(getTime());
-		    // Explicitly register the final cursor position
-		    // before closing the child window.
-		    ImGui::Dummy(ImVec2(0.0f, 0.0f));
                     ImGui::EndChild();
                     ImGui::EndTabItem();
                 }

@@ -226,7 +226,11 @@ namespace satdump
 
             // Finish up
             ImGui::SetCursorPosY(pos.y + digit_size.y + style.ItemSpacing.y);
-            ImGui::PopID();
+            
+	    // Register the updated cursor position with ImGui layout.
+	    ImGui::Dummy(ImVec2(0.0f, 0.0f));
+
+	    ImGui::PopID();
             if ((int64_t)(*frequency_hz) + change_by < 0 || *frequency_hz + change_by > 1e12)
                 change_by = 0;
 
