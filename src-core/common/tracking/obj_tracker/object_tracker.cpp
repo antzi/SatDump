@@ -10,8 +10,7 @@ namespace satdump
     ObjectTracker::ObjectTracker(bool is_gui) : is_gui(is_gui)
     {
         auto &tle_registry = db_keplers->all_;
-        if (tle_registry.size() > 0)
-            has_tle = true;
+	has_tle.store(!tle_registry.empty());
 
         for (auto &tle : tle_registry)
             satoptions.push_back(tle.name);
@@ -25,8 +24,7 @@ namespace satdump
                 general_mutex.lock();
 
                 auto &tle_registry = db_keplers->all_;
-                if (tle_registry.size() > 0)
-                    has_tle = true;
+		has_tle.store(!tle_registry.empty());
 
                 satoptions.clear();
                 for (auto &tle : tle_registry)
@@ -42,7 +40,7 @@ namespace satdump
 
     ObjectTracker::~ObjectTracker()
     {
-        backend_should_run = false;
+        backend_should_run.store(false);
         if (backend_thread.joinable())
             backend_thread.join();
 

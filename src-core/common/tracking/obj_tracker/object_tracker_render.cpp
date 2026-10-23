@@ -184,10 +184,31 @@ namespace satdump
 
     void ObjectTracker::renderSelectionMenu()
     {
-        bool update_global = false;
+        // Take a consistent snapshot for this ImGui frame. Never keep
+        // general_mutex locked while drawing ImGui widgets or doing I/O.
+        TrackingMode display_mode;
+        int selected_satellite;
+        int selected_horizons;
+        std::vector<std::pair<std::string, int>> satellites; // Name, NORAD ID
+        decltype(horizonsoptions) horizons;
+        {
+            std::lock_guard<std::mutex> lock(general_mutex);
+            display_mode = tracking_mode;
+            selected_satellite = current_satellite_id;
+            selected_horizons = current_horizons_id;
+            horizons = horizonsoptions;
 
-	// Keep the UI disable state constant throughout this render call.
-	const bool disable_controls = backend_needs_update;
+            const auto &reg = db_keplers->all_;
+            for (size_t i = 0; i < satoptions.size() && i < reg.size(); ++i)
+                satellites.emplace_back(satoptions[i], reg[i].norad);
+        }
+
+        // Use the same value for the push and pop, even if the backend
+        // finishes updating in the middle of this frame.
+	const bool disable_controls = backend_needs_update.load();
+        bool selection_requested = false;
+        TrackingMode requested_mode = TRACKING_NONE;
+        int requested_object_id = 0;
 
 	if (disable_controls)
             style::beginDisabled();
@@ -196,84 +217,116 @@ namespace satdump
         {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            if (ImGui::RadioButton("Satellites", tracking_mode == TRACKING_SATELLITE))
+            if (ImGui::RadioButton("Satellites", display_mode == TRACKING_SATELLITE))
             {
-                tracking_mode = TRACKING_SATELLITE;
-                update_global = true;
+                if (!satellites.empty())
+                {
+                    const int i = selected_satellite >= 0 &&
+                                  selected_satellite < (int)satellites.size()
+                                      ? selected_satellite : 0;
+                    display_mode = TRACKING_SATELLITE;
+                    requested_mode = TRACKING_SATELLITE;
+                    requested_object_id = satellites[i].second;
+                    selection_requested = true;
+                }
             }
+
             ImGui::TableSetColumnIndex(1);
-            if (ImGui::RadioButton("Horizons", tracking_mode == TRACKING_HORIZONS))
+            if (ImGui::RadioButton("Horizons", display_mode == TRACKING_HORIZONS))
             {
-                if (horizonsoptions.size() == 1)
-                    horizonsoptions = pullHorizonsList();
-                tracking_mode = TRACKING_HORIZONS;
-                update_global = true;
+                // Preserve lazy loading, but perform the network request
+                // OUTSIDE general_mutex. Publish the list while holding it.
+                if (horizons.size() == 1)
+                {
+                    auto fetched = pullHorizonsList();
+                    std::lock_guard<std::mutex> lock(general_mutex);
+                    if (horizonsoptions.size() == 1)
+                        horizonsoptions = fetched;
+                    horizons = horizonsoptions;
+                    selected_horizons = current_horizons_id;
+                }
+
+                if (!horizons.empty())
+                {
+                    const int i = selected_horizons >= 0 &&
+                                  selected_horizons < (int)horizons.size()
+                                      ? selected_horizons : 0;
+                    display_mode = TRACKING_HORIZONS;
+                    requested_mode = TRACKING_HORIZONS;
+                    requested_object_id = horizons[i].first;
+                    selection_requested = true;
+                }
             }
             ImGui::EndTable();
         }
 
         ImGui::SetNextItemWidth(ImGui::GetWindowContentRegionMax().x);
-        if (tracking_mode == TRACKING_HORIZONS)
+        if (display_mode == TRACKING_HORIZONS)
         {
-            if (ImGui::BeginCombo("###horizonsselectcombo", horizonsoptions[current_horizons_id].second.c_str()))
+            const bool valid = selected_horizons >= 0 &&
+                               selected_horizons < (int)horizons.size();
+            const char *preview = valid ? horizons[selected_horizons].second.c_str()
+                                        : "No Horizons target";
+            if (ImGui::BeginCombo("###horizonsselectcombo", preview))
             {
                 ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::InputTextWithHint("##horizonssatellitetracking", u8"\uf422   Search", &horizons_searchstr);
-                for (int i = 0; i < (int)horizonsoptions.size(); i++)
+                for (int i = 0; i < (int)horizons.size(); ++i)
                 {
-                    bool show = true;
-                    if (horizons_searchstr.size() != 0)
-                        show = satdump::isStringPresent(horizonsoptions[i].second, horizons_searchstr);
-                    if (show)
+                    if (!horizons_searchstr.empty() &&
+                        !satdump::isStringPresent(horizons[i].second, horizons_searchstr))
+                        continue;
+
+                    if (ImGui::Selectable(horizons[i].second.c_str(), i == selected_horizons))
                     {
-                        if (ImGui::Selectable(horizonsoptions[i].second.c_str(), i == current_horizons_id))
-                        {
-                            current_horizons_id = i;
-                            update_global = true;
-                        }
+                        requested_mode = TRACKING_HORIZONS;
+                        requested_object_id = horizons[i].first;
+                        selection_requested = true;
                     }
                 }
                 ImGui::EndCombo();
             }
 
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Horizons ID %d", horizonsoptions[current_horizons_id].first);
+            if (valid && ImGui::IsItemHovered())
+                ImGui::SetTooltip("Horizons ID %d", horizons[selected_horizons].first);
         }
-        else if (tracking_mode == TRACKING_SATELLITE)
+        else if (display_mode == TRACKING_SATELLITE)
         {
-            if (ImGui::BeginCombo("###satelliteselectcombo", satoptions[current_satellite_id].c_str()))
+            const bool valid = selected_satellite >= 0 &&
+                               selected_satellite < (int)satellites.size();
+            const char *preview = valid ? satellites[selected_satellite].first.c_str()
+                                        : "No satellite";
+            if (ImGui::BeginCombo("###satelliteselectcombo", preview))
             {
                 ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::InputTextWithHint("##searchsatellitetracking", u8"\uf422   Search", &satellite_searchstr);
-                for (int i = 0; i < (int)satoptions.size(); i++)
+                for (int i = 0; i < (int)satellites.size(); i++)
                 {
-                    bool show = true;
-                    if (satellite_searchstr.size() != 0)
-                        show = isStringPresent(satoptions[i], satellite_searchstr);
-                    if (show)
+                    if (!satellite_searchstr.empty() &&
+                        !isStringPresent(satellites[i].first, satellite_searchstr))
+                        continue;
+
+                    if (ImGui::Selectable(satellites[i].first.c_str(), i == selected_satellite))
                     {
-                        if (ImGui::Selectable(satoptions[i].c_str(), i == current_satellite_id))
-                        {
-                            current_satellite_id = i;
-                            update_global = true;
-                        }
+			requested_mode = TRACKING_SATELLITE;
+			requested_object_id = db_keplers->all_[i].norad;
+			selection_requested = true;
                     }
                 }
                 ImGui::EndCombo();
             }
 
-            if (ImGui::IsItemHovered())
-            {
-                auto &reg = db_keplers->all_;
-                ImGui::SetTooltip("NORAD ID %d", reg[current_satellite_id].norad);
-            }
+            if (valid && ImGui::IsItemHovered())
+                ImGui::SetTooltip("NORAD ID %d", satellites[selected_satellite].second);
         }
 
         if (disable_controls)
             style::endDisabled();
 
-        if (update_global)
-            backend_needs_update = true;
+        // setObject() owns general_mutex and requests a backend refresh.
+        // Do not call it while holding our snapshot lock or during ImGui UI.
+        if (selection_requested)
+            setObject(requested_mode, requested_object_id);
     }
 
     void ObjectTracker::renderObjectStatus()

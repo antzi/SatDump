@@ -5,6 +5,7 @@
 #include <mutex>
 #include "libs/predict/predict.h"
 #include <thread>
+#include <atomic>
 #include "common/tracking/rotator/rotator_handler.h"
 #include "common/geodetic/geodetic_coordinates.h"
 #include "image/image.h"
@@ -35,7 +36,8 @@ namespace satdump
 
     private: // General configs/utils
         TrackingMode tracking_mode = TRACKING_NONE;
-        bool has_tle = false, is_gui;
+        std::atomic<bool> has_tle{false}; 
+	bool is_gui;
         std::mutex general_mutex;
 
         inline float az_el_to_plot_x(float plot_size, float radius, float az, float el) { return sin(az * DEG_TO_RAD) * plot_size * radius * ((90.0 - el) / 90.0); }
@@ -100,10 +102,10 @@ namespace satdump
         std::vector<HorizonsV> pullHorizonsData(double start_time, double stop_time, int num_points);
 
     private: // Internal threads
-        bool backend_should_run = true;
+        std::atomic<bool> backend_should_run{true};
         std::thread backend_thread;
         void backend_run();
-        bool backend_needs_update = true;
+        std::atomic<bool> backend_needs_update{true};
 
         bool rotatorth_should_run = true;
         std::thread rotatorth_thread;

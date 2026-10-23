@@ -11,11 +11,11 @@ namespace satdump
 {
     void ObjectTracker::backend_run()
     {
-        while (backend_should_run)
+        while (backend_should_run.load())
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-            if (!has_tle)
+            if (!has_tle.load())
                 continue;
 
             general_mutex.lock();
@@ -26,9 +26,12 @@ namespace satdump
             {
                 if (current_time > last_horizons_fetch_time + 3600)
                 {
+		    // The refresh also satisfies any pending update request.
+		    // Consume it before starting the refresh.
+		    backend_needs_update.exchange(false);
+
                     loadHorizons(current_time);
                     updateNextPass(current_time);
-                    backend_needs_update = false;
                 }
 
                 if (horizons_data.size() > 0)
@@ -60,7 +63,7 @@ namespace satdump
             }
 
             // Update
-            if (backend_needs_update)
+            if (backend_needs_update.exchange(false))
             {
                 logger->trace("Updating elements...");
 
@@ -80,8 +83,6 @@ namespace satdump
                     satellite_object = predict_parse_tle(tle.line1.c_str(), tle.line2.c_str());
                     updateNextPass(current_time);
                 }
-
-                backend_needs_update = false;
             }
 
             general_mutex.unlock();
