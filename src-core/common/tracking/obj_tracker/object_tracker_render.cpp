@@ -186,7 +186,10 @@ namespace satdump
     {
         bool update_global = false;
 
-        if (backend_needs_update)
+	// Keep the UI disable state constant throughout this render call.
+	const bool disable_controls = backend_needs_update;
+
+	if (disable_controls)
             style::beginDisabled();
 
         if (ImGui::BeginTable("##trackingradiotable", 2, ImGuiTableFlags_None))
@@ -266,7 +269,7 @@ namespace satdump
             }
         }
 
-        if (backend_needs_update)
+        if (disable_controls)
             style::endDisabled();
 
         if (update_global)
