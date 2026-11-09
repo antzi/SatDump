@@ -79,4 +79,6 @@ int main_old(int argc, char *argv[])
     }
 
     logger->info("Done! Goodbye");
+
+    return 0;
 }
